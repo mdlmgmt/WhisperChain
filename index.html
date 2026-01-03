@@ -2,434 +2,509 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ChirpChain: Acoustic Consensus</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ChirpChain v0.2: Adaptive Sync</title>
     <style>
-        :root { --p: #0f0; --s: #000; --d: #111; --err: #f00; --warn: #ff0; }
-        body { background: var(--s); color: var(--p); font-family: 'Courier New', monospace; padding: 20px; margin: 0; overflow-x: hidden; }
+        :root { --p: #0f0; --s: #000; --d: #111; --h: #003300; --err: #f00; --warn: #ff0; }
+        body { background: var(--s); color: var(--p); font-family: 'Courier New', monospace; padding: 15px; margin: 0; overflow-x: hidden; font-size: 14px; }
         
-        /* Layout */
-        header { border-bottom: 2px solid var(--p); padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
-        h1 { margin: 0; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 2px; }
-        .status-badge { background: var(--p); color: var(--s); padding: 2px 8px; font-weight: bold; font-size: 0.8rem; }
+        /* UI Layout */
+        header { border-bottom: 2px solid var(--p); padding-bottom: 10px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        h1 { margin: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
         
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        @media(max-width: 768px) { .grid { grid-template-columns: 1fr; } }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        @media(max-width: 600px) { .grid { grid-template-columns: 1fr; } }
 
-        .panel { border: 1px solid #333; background: var(--d); padding: 15px; position: relative; }
-        .panel h2 { margin-top: 0; font-size: 1rem; border-bottom: 1px dashed #444; padding-bottom: 5px; color: #888; }
+        .panel { border: 1px solid #333; background: var(--d); padding: 10px; position: relative; margin-bottom: 15px; }
+        .panel h2 { margin-top: 0; font-size: 0.9rem; border-bottom: 1px dashed #444; padding-bottom: 5px; color: #888; text-transform: uppercase;}
         
-        /* Visualizer */
-        canvas { width: 100%; height: 120px; background: #050505; border: 1px solid #333; display: block; }
+        /* Hardware Viz */
+        canvas { width: 100%; height: 100px; background: #050505; border: 1px solid #333; display: block; }
+        .meter-container { height: 10px; background: #222; margin-top: 5px; position: relative; }
+        .meter-bar { height: 100%; background: var(--p); width: 0%; transition: width 0.1s; }
         
-        /* Controls */
-        button { background: #222; border: 1px solid var(--p); color: var(--p); padding: 10px; cursor: pointer; width: 100%; font-family: inherit; margin-top: 5px; transition: 0.1s; text-transform: uppercase; font-weight: bold; }
+        /* Interactive Elements */
+        button { background: #222; border: 1px solid var(--p); color: var(--p); padding: 12px; cursor: pointer; width: 100%; font-family: inherit; margin-top: 8px; font-weight: bold; }
         button:hover { background: var(--p); color: var(--s); }
-        button:active { transform: translateY(2px); }
-        input { background: #000; border: 1px solid #444; color: #fff; padding: 10px; width: 100%; box-sizing: border-box; font-family: inherit; margin-bottom: 5px; }
+        button:disabled { border-color: #555; color: #555; cursor: not-allowed; }
+        input { background: #000; border: 1px solid #444; color: #fff; padding: 10px; width: 100%; box-sizing: border-box; font-family: inherit; }
 
         /* Logs */
-        .log-window { height: 150px; overflow-y: auto; font-size: 0.75rem; color: #aaa; border-top: 1px solid #333; margin-top: 10px; padding-top: 5px; scrollbar-width: thin; }
-        .log-entry { margin-bottom: 2px; }
-        .log-tx { color: #fff; }
-        .log-net { color: #0ff; }
-        .log-sys { color: #888; }
+        .log-window { height: 120px; overflow-y: auto; font-size: 0.7rem; color: #aaa; border: 1px solid #333; padding: 5px; background: #000; font-family: monospace; white-space: pre-wrap; }
+        .log-tx { color: #fff; } .log-rx { color: #0ff; } .log-sys { color: #888; } .log-err { color: #f00; }
 
-        /* Chain View */
-        .chain-view { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 5px; }
-        .block-node { min-width: 60px; height: 60px; border: 1px solid #444; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.7rem; cursor: pointer; }
-        .block-node:hover { border-color: var(--p); background: #002200; }
-        .block-node.genesis { border-color: #ff0; }
+        /* Chain */
+        .chain-view { display: flex; gap: 5px; overflow-x: auto; padding: 5px 0; }
+        .block-node { min-width: 50px; height: 50px; border: 1px solid #444; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.7rem; background: #080808; }
+        .block-node.tip { border-color: var(--p); box-shadow: 0 0 5px var(--p); }
+
+        /* Pulse Animation for Broadcasting */
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); } }
+        .transmitting { animation: pulse 1s infinite; border-color: #fff !important; }
     </style>
 </head>
 <body>
 
     <header>
         <div>
-            <h1>ChirpChain <span style="font-size:0.5em">v0.1 ALPHA</span></h1>
-            <div style="font-size: 0.7rem; color: #666;">Acoustic Air-Gap Protocol</div>
+            <h1>ChirpChain <span style="font-size:0.6em; color:#888;">v0.2</span></h1>
         </div>
-        <div id="systemStatus" class="status-badge" style="background:#333; color:#888;">OFFLINE</div>
+        <div id="statusIndicator" style="font-size:0.7rem; color:#555;"> NO AUDIO</div>
     </header>
 
-    <!-- Main Visualizer -->
-    <canvas id="scope"></canvas>
-    
-    <div style="margin: 20px 0;">
-        <button onclick="initSystem()" id="initBtn">⚡ INITIALIZE AUDIO ENGINE & MIC ⚡</button>
+    <div id="setupPanel">
+        <button onclick="initAudio()" id="initBtn"> ACTIVATE ACOUSTIC NODE</button>
+        <div style="font-size: 0.7rem; color: #666; margin-top: 5px; text-align: center;">Requires Microphone & Speaker Access</div>
     </div>
 
-    <div class="grid">
-        <!-- NODE OPS -->
+    <div id="mainInterface" style="display:none;">
+        
+        <!-- VISUALIZER -->
+        <canvas id="scope"></canvas>
+        <div style="display: flex; justify-content: space-between; font-size: 0.6rem; color: #666; margin-bottom: 10px;">
+            <span>15kHz</span>
+            <span>Signal Spectrum</span>
+            <span>20kHz</span>
+        </div>
+
+        <div class="grid">
+            <!-- MINER -->
+            <div class="panel">
+                <h2>Local Chain (Miner)</h2>
+                <div style="margin-bottom: 5px; font-size: 0.7rem;">Chain Height: <span id="chainHeight" style="color:#fff">0</span></div>
+                <div class="chain-view" id="chainVis"></div>
+                <div style="margin-top: 10px;">
+                    <input type="text" id="txData" placeholder="Data payload...">
+                    <button onclick="mineBlock()"> Mine Block</button>
+                </div>
+            </div>
+
+            <!-- ACOUSTIC P2P -->
+            <div class="panel" style="border-color: #0ff;">
+                <h2 style="color: #0ff;">Air-Gap Sync</h2>
+                
+                <!-- RX CONTROLS -->
+                <div id="rxControls">
+                    <div style="font-size: 0.7rem; color: #aaa;">NOISE FLOOR: <span id="noiseFloor">--</span> dB</div>
+                    <div class="meter-container"><div id="signalMeter" class="meter-bar"></div></div>
+                    <button onclick="toggleListener()" id="listenBtn"> Start Scanner</button>
+                </div>
+
+                <!-- TX CONTROLS -->
+                <div style="margin-top: 15px; border-top: 1px dashed #333; padding-top: 10px;">
+                    <button onclick="broadcastChain()" id="broadcastBtn" style="border-color:#ff0; color:#ff0;"> Broadcast Chain</button>
+                </div>
+
+                <div id="rxStatus" style="margin-top: 5px; text-align: center; color: #0ff; font-weight: bold; height: 20px;">IDLE</div>
+            </div>
+        </div>
+
+        <!-- LOGS -->
         <div class="panel">
-            <h2>Local Node (Miner)</h2>
-            <input type="text" id="txData" placeholder="Enter Data (e.g. 'Key: 8f3a...')">
-            <button onclick="mineBlock()">💉 Inject & Mine (Spectrum)</button>
-            <div style="margin-top:10px; font-size:0.8rem;">
-                <strong>Chain Height:</strong> <span id="chainHeight">0</span>
-            </div>
-            <div class="chain-view" id="chainVis"></div>
+            <h2>Kernel Log</h2>
+            <div class="log-window" id="consoleLog"></div>
+            <button onclick="wipeChain()" style="background:#200; border-color:#f00; color:#f00; font-size: 0.7rem; padding: 5px; margin-top: 5px;">Factory Reset</button>
         </div>
-
-        <!-- P2P OPS -->
-        <div class="panel" style="border-color: #0ff;">
-            <h2 style="color: #0ff;">Acoustic P2P (Air-Gap)</h2>
-            <div style="display:flex; gap:10px;">
-                <button onclick="toggleListener()" id="listenBtn">👂 Scan Airwaves</button>
-                <button onclick="broadcastStatus()" style="border-color:#ff0; color:#ff0;">📢 Chirp Signal</button>
-            </div>
-            <div id="p2pDisplay" style="margin-top:10px; font-size: 2rem; text-align: center; color: #333;">---</div>
-            <div style="font-size: 0.7rem; text-align: center; color: #666;">FREQ: 18.5kHz (0) / 19.5kHz (1)</div>
-        </div>
-    </div>
-
-    <!-- TERMINAL -->
-    <div class="panel" style="margin-top: 20px;">
-        <h2>System Log</h2>
-        <div class="log-window" id="consoleLog"></div>
-        <button onclick="clearStorage()" style="margin-top:5px; background:#300; border-color:red; color:red; font-size:0.7rem; padding: 5px;">⚠ WIPE MEMORY</button>
     </div>
 
 <script>
 /**
- * CHIRPCHAIN CORE
- * 1. AudioEngine: Handles WebAudio API for Mining (FFT) and Comms (FSK).
- * 2. Blockchain: Manages LocalStorage and State.
- * 3. Protocol: Encodes/Decodes binary data to Sound.
+ * CHIRPCHAIN v0.2 - ADAPTIVE ACOUSTIC CONSENSUS
+ * 
+ * PROTOCOL SPEC:
+ * 1. PILOT: 17,000 Hz (Sent for 1.5s). Receiver scans for peak to lock freq.
+ * 2. SYNC GAP: 200ms Silence.
+ * 3. DATA: NRZ Encoded. 18kHz (0) / 19kHz (1).
+ *    - Receiver applies frequency correction offset found during Pilot.
+ *    - Baud Rate: 120ms (Slow but reliable).
  */
 
-// --- CONFIGURATION ---
 const CFG = {
-    freq0: 18500,     // Bit 0
-    freq1: 19500,     // Bit 1
-    freqPilot: 17500, // Handshake / Wake word
-    baudRate: 80,     // ms per bit (Slower = More Reliable)
-    fftSize: 2048
+    freqPilot: 17000,
+    freq0: 18000,
+    freq1: 19000,
+    baud: 120, // ms per bit
+    pilotDuration: 1500, // ms
+    fftSize: 2048,
+    thresholdRatio: 1.5 // Signal must be 1.5x louder than noise floor
 };
 
-// --- GLOBAL STATE ---
-let ctx = null; // AudioContext
-let masterGain = null;
-let analyser = null; // For Visuals
-let micAnalyser = null; // For Listening
-let isListening = false;
-let listenInterval = null;
+// GLOBAL STATE
+let ctx, analyser, mic, micAnalyser;
 let chain = [];
+let isListening = false;
+let scannerInterval;
+let rxState = 'IDLE'; // IDLE, SCANNING, LOCKED, RECEIVING
+let ambientNoise = 0;
+let freqOffset = 0; // Hardware correction
 
-// --- 1. SYSTEM INIT ---
-async function initSystem() {
-    if (ctx) return;
+// --- 1. SYSTEM INITIALIZATION ---
+async function initAudio() {
+    // Security Check
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+        alert("SECURITY ERR: Browser requires HTTPS for Microphone access.");
+        return;
+    }
+
     try {
-        // Audio Ctx
         ctx = new (window.AudioContext || window.webkitAudioContext)();
-        masterGain = ctx.createGain();
-        masterGain.gain.value = 0.5;
-        masterGain.connect(ctx.destination);
         
-        // Visualizer
+        // Output path (Speakers)
         analyser = ctx.createAnalyser();
         analyser.fftSize = CFG.fftSize;
-        masterGain.connect(analyser); // Loopback what we play to visualizer
+        analyser.connect(ctx.destination); // Loopback to ears
 
-        // Microphone (P2P Input)
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const micSource = ctx.createMediaStreamSource(stream);
+        // Input path (Mic)
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+                echoCancellation: false, 
+                noiseSuppression: false, // Vital for hearing tones
+                autoGainControl: false 
+            } 
+        });
+        
+        mic = ctx.createMediaStreamSource(stream);
         micAnalyser = ctx.createAnalyser();
         micAnalyser.fftSize = CFG.fftSize;
-        micAnalyser.smoothingTimeConstant = 0.1; // Fast reaction
-        micSource.connect(micAnalyser); // Mic goes to analyzer, NOT speakers (avoid feedback)
+        micAnalyser.smoothingTimeConstant = 0.2;
+        mic.connect(micAnalyser);
 
-        // UI Updates
-        document.getElementById('systemStatus').innerText = "ONLINE";
-        document.getElementById('systemStatus').style.background = "#0f0";
-        document.getElementById('systemStatus').style.color = "#000";
-        document.getElementById('initBtn').style.display = 'none';
+        // UI Swap
+        document.getElementById('setupPanel').style.display = 'none';
+        document.getElementById('mainInterface').style.display = 'block';
+        document.getElementById('statusIndicator').innerHTML = `<span style="color:#0f0"> ONLINE</span>`;
         
-        log("SYS", "Audio Engine Started. Microphone Active.");
-        log("SYS", "DSP Ready. Frequencies locked.");
+        log("SYS", "DSP Engine Started.");
+        log("SYS", `Sample Rate: ${ctx.sampleRate}Hz`);
         
         loadChain();
-        startVisualizer();
+        drawVisualizer();
+        calibrateNoiseFloor();
+
     } catch (e) {
-        log("ERR", "Init Failed: " + e);
+        alert("Init Failed: " + e.message);
     }
 }
 
-// --- 2. BLOCKCHAIN LOGIC ---
+// --- 2. BLOCKCHAIN CORE ---
 function loadChain() {
-    const stored = localStorage.getItem('chirp_chain');
-    if (stored) {
-        chain = JSON.parse(stored);
-        log("SYS", `Loaded ${chain.length} blocks from persistence.`);
-    } else {
-        log("SYS", "No chain found. Ready for Genesis.");
-    }
-    updateUI();
+    const stored = localStorage.getItem('chirp_chain_v2');
+    chain = stored ? JSON.parse(stored) : [];
+    renderChain();
+    log("SYS", `Chain Loaded. Height: ${chain.length}`);
 }
 
 function mineBlock() {
-    if (!ctx) return alert("Power on the system first!");
     const data = document.getElementById('txData').value || "Empty Block";
     
-    log("MINE", `Injecting data: "${data}"`);
-    
-    // 1. Audio Effect (The "Work")
-    // Convert string to frequencies (Harmonic Encoding)
-    const freqs = textToFreqs(data);
-    playPolyphonic(freqs, 0.5); // Play for 500ms
+    // Play "Mining" Sound (Spectral Hashing simulation)
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.frequency.setValueAtTime(400, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.1);
+    gain.gain.value = 0.1;
+    osc.connect(gain);
+    gain.connect(analyser); // Connect to main out
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
 
-    // 2. Commit to Chain
-    const newBlock = {
+    const block = {
         index: chain.length,
         timestamp: Date.now(),
         data: data,
-        prevHash: chain.length ? "hash_" + (chain.length-1) : "0000",
-        // In a real app, we'd capture the FFT spectrum here
-        signature: Math.random().toString(36).substring(7) 
+        prevHash: chain.length ? chain[chain.length-1].hash : "GENESIS",
+        hash: Math.random().toString(36).substring(2, 10)
     };
 
-    chain.push(newBlock);
-    localStorage.setItem('chirp_chain', JSON.stringify(chain));
-    
-    setTimeout(() => {
-        log("MINE", `Block #${newBlock.index} crystallized.`);
-        updateUI();
-        document.getElementById('txData').value = "";
-    }, 500);
+    chain.push(block);
+    localStorage.setItem('chirp_chain_v2', JSON.stringify(chain));
+    renderChain();
+    document.getElementById('txData').value = "";
+    log("MINE", `Block #${block.index} Mined.`);
 }
 
-function updateUI() {
+function renderChain() {
     document.getElementById('chainHeight').innerText = chain.length;
-    const vis = document.getElementById('chainVis');
-    vis.innerHTML = chain.map(b => 
-        `<div class="block-node ${b.index===0?'genesis':''}" title="${b.data}">#${b.index}</div>`
+    const el = document.getElementById('chainVis');
+    el.innerHTML = chain.map((b, i) => 
+        `<div class="block-node ${i===chain.length-1?'tip':''}" onclick="alert('${b.data}')">#${b.index}</div>`
     ).reverse().join('');
 }
 
-function clearStorage() {
-    localStorage.removeItem('chirp_chain');
+function wipeChain() {
+    localStorage.removeItem('chirp_chain_v2');
     chain = [];
-    updateUI();
-    log("SYS", "Memory Wiped.");
+    renderChain();
+    log("SYS", "Storage Wiped.");
 }
 
-// --- 3. AUDIO PROTOCOL (The Chirp) ---
+// --- 3. TRANSMISSION PROTOCOL (TX) ---
+function broadcastChain() {
+    if(!ctx) return;
+    const btn = document.getElementById('broadcastBtn');
+    btn.classList.add('transmitting');
+    btn.disabled = true;
 
-// TRANSMITTER
-function broadcastStatus() {
-    if (!ctx) return;
-    
-    // Protocol Packet: [PILOT] [HEIGHT (8 bits)] [HASH (16 bits)]
-    // For demo, we just send "Height"
+    // Payload: Only sending Chain Height (8 bits) for MVP
     const height = chain.length;
-    const binary = height.toString(2).padStart(8, '0');
-    
-    log("NET", `Broadcasting State (Height: ${height})...`);
-    
-    let timeline = ctx.currentTime;
-    
-    // 1. Pilot Tone (Wake up receivers) - 300ms
-    playToneAt(CFG.freqPilot, timeline, 0.3);
-    timeline += 0.3;
-    
-    // 2. Silence spacer - 50ms
-    timeline += 0.05;
+    // Cap at 255 blocks for protocol simplicity
+    const payload = Math.min(height, 255).toString(2).padStart(8, '0');
 
-    // 3. Payload
-    for (let i = 0; i < binary.length; i++) {
-        const bit = binary[i];
-        const freq = bit === '1' ? CFG.freq1 : CFG.freq0;
-        playToneAt(freq, timeline, CFG.baudRate / 1000);
-        timeline += (CFG.baudRate / 1000);
-    }
+    log("TX", `Broadcasting Height: ${height} (Binary: ${payload})`);
     
-    log("NET", `Transmission Complete. sent: ${binary}`);
+    const t0 = ctx.currentTime;
+    
+    // 1. PILOT TONE (1.5s) - Allows receiver to lock frequency
+    playFreq(CFG.freqPilot, t0, CFG.pilotDuration / 1000);
+    
+    // 2. SYNC GAP (200ms) - Silence implies "Data Start"
+    const tData = t0 + (CFG.pilotDuration / 1000) + 0.2;
+
+    // 3. DATA STREAM
+    for(let i=0; i<payload.length; i++) {
+        const bit = payload[i];
+        const freq = bit === '1' ? CFG.freq1 : CFG.freq0;
+        playFreq(freq, tData + (i * CFG.baud/1000), CFG.baud/1000);
+    }
+
+    // Cleanup UI
+    setTimeout(() => {
+        btn.classList.remove('transmitting');
+        btn.disabled = false;
+        log("TX", "Broadcast Complete.");
+    }, (tData - t0) * 1000 + (payload.length * CFG.baud) + 100);
 }
 
-function playToneAt(freq, startTime, duration) {
+function playFreq(freq, startTime, duration) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    
     osc.frequency.value = freq;
     
-    // Envelope to prevent popping
+    // Envelope (Anti-pop)
     gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(1, startTime + 0.01);
-    gain.gain.linearRampToValueAtTime(1, startTime + duration - 0.01);
+    gain.gain.linearRampToValueAtTime(0.8, startTime + 0.05);
+    gain.gain.linearRampToValueAtTime(0.8, startTime + duration - 0.05);
     gain.gain.linearRampToValueAtTime(0, startTime + duration);
     
     osc.connect(gain);
-    gain.connect(masterGain); // Out to speakers
-    
+    gain.connect(analyser); // Play to speakers
     osc.start(startTime);
     osc.stop(startTime + duration);
 }
 
-// RECEIVER
+
+// --- 4. RECEIVER PROTOCOL (RX) ---
+function calibrateNoiseFloor() {
+    // Sample for 1 second to find ambient noise in the ultrasonic range
+    let samples = 0;
+    let sum = 0;
+    const scanner = setInterval(() => {
+        const energy = getEnergyAt(CFG.freqPilot); // Check pilot band
+        sum += energy;
+        samples++;
+        if(samples > 20) {
+            clearInterval(scanner);
+            ambientNoise = Math.max(10, sum / samples); // Min floor 10
+            document.getElementById('noiseFloor').innerText = Math.floor(ambientNoise);
+            log("SYS", `Calibrated Noise Floor: ${Math.floor(ambientNoise)}`);
+        }
+    }, 50);
+}
+
 function toggleListener() {
-    if (!ctx) return;
-    if (isListening) {
-        clearInterval(listenInterval);
+    if(isListening) {
+        clearInterval(scannerInterval);
         isListening = false;
-        document.getElementById('listenBtn').innerText = "👂 Scan Airwaves";
+        rxState = 'IDLE';
+        document.getElementById('listenBtn').innerText = " Start Scanner";
         document.getElementById('listenBtn').style.background = "#222";
-        log("NET", "Scanner Disabled.");
+        document.getElementById('rxStatus').innerText = "IDLE";
     } else {
-        listenInterval = setInterval(scanAirwaves, 20); // High speed polling
-        isListening = true;
-        document.getElementById('listenBtn').innerText = "Scanning...";
-        document.getElementById('listenBtn').style.background = "#004400";
-        log("NET", "Scanner Active. Listening for Chirps...");
+        startScanning();
     }
 }
 
-let rxBuffer = "";
-let lastSignalTime = 0;
-let receiving = false;
-
-function scanAirwaves() {
-    if (!micAnalyser) return;
+function startScanning() {
+    isListening = true;
+    rxState = 'SCANNING';
+    document.getElementById('listenBtn').innerText = " Stop Scanner";
+    document.getElementById('listenBtn').style.background = "#400";
+    document.getElementById('rxStatus').innerText = "SCANNING FOR PILOT...";
     
-    const data = new Uint8Array(micAnalyser.frequencyBinCount);
-    micAnalyser.getByteFrequencyData(data);
+    let pilotStreak = 0;
     
-    // Check specific bins
-    const nyquist = ctx.sampleRate / 2;
-    const binWidth = nyquist / micAnalyser.frequencyBinCount;
-    
-    const getEnergy = (freq) => {
-        const bin = Math.floor(freq / binWidth);
-        // Average bin and neighbors for stability
-        return (data[bin] + data[bin-1] + data[bin+1]) / 3;
-    };
+    scannerInterval = setInterval(() => {
+        // --- STEP 1: PILOT DETECTION ---
+        if(rxState === 'SCANNING') {
+            // Scan window around pilot (16.5k - 17.5k) for peak
+            const peak = findPeakInWindow(CFG.freqPilot, 500);
+            
+            // UI Meter
+            const meterPct = Math.min((peak.energy / (ambientNoise*3)) * 100, 100);
+            document.getElementById('signalMeter').style.width = meterPct + "%";
 
-    const e0 = getEnergy(CFG.freq0);
-    const e1 = getEnergy(CFG.freq1);
-    const eP = getEnergy(CFG.freqPilot);
-    const threshold = 80; // dB ish
-
-    const disp = document.getElementById('p2pDisplay');
-
-    // 1. Detect Pilot (Start of Packet)
-    if (eP > threshold && !receiving) {
-        receiving = true;
-        rxBuffer = "";
-        log("NET", "⚡ PILOT TONE DETECTED. SYNCING...");
-        disp.innerText = "PILOT";
-        disp.style.color = "#ff0";
-        lastSignalTime = Date.now();
-        return;
-    }
-
-    // 2. Detect Bits (Only if receiving)
-    if (receiving) {
-        // Timeout check (if silence for 500ms, packet done)
-        if (Date.now() - lastSignalTime > 500) {
-            processPacket(rxBuffer);
-            receiving = false;
-            disp.innerText = "---";
-            disp.style.color = "#333";
-            return;
-        }
-
-        // Simple Debounce logic needed for real usage, 
-        // but for MVP we just sample. 
-        // Since baud is 80ms and we poll 20ms, we will see the same bit 4 times.
-        // We act on edges or simply assume specific timing.
-        // For this Demo: simplistic peak detection with cooldown.
-        
-        if (Date.now() - lastSignalTime > CFG.baudRate) {
-            if (e1 > threshold && e1 > e0) {
-                rxBuffer += "1";
-                disp.innerText = "1";
-                disp.style.color = "#0f0";
-                lastSignalTime = Date.now();
-            } else if (e0 > threshold && e0 > e1) {
-                rxBuffer += "0";
-                disp.innerText = "0";
-                disp.style.color = "#f00";
-                lastSignalTime = Date.now();
+            if(peak.energy > ambientNoise * CFG.thresholdRatio) {
+                pilotStreak++;
+                if(pilotStreak > 10) { // ~200ms of solid tone
+                    rxState = 'LOCKED';
+                    freqOffset = peak.freq - CFG.freqPilot; // CALCULATE HARDWARE SKEW
+                    log("RX", `LOCKED! Skew: ${Math.floor(freqOffset)}Hz`);
+                    document.getElementById('rxStatus').innerText = "PILOT LOCKED - WAITING FOR SYNC";
+                    document.getElementById('rxStatus').style.color = "#ff0";
+                }
+            } else {
+                pilotStreak = 0;
             }
         }
+
+        // --- STEP 2: SYNC GAP DETECTION ---
+        else if (rxState === 'LOCKED') {
+            const currentPilotEnergy = getEnergyAt(CFG.freqPilot + freqOffset);
+            
+            // Wait for silence (Pilot ends)
+            if(currentPilotEnergy < ambientNoise * 1.2) {
+                log("RX", "Sync Gap Detected. Reading Stream...");
+                rxState = 'RECEIVING';
+                document.getElementById('rxStatus').innerText = "RECEIVING DATA...";
+                document.getElementById('rxStatus').style.color = "#0f0";
+                
+                // Align timing: Wait half a baud to sample middle of bit
+                setTimeout(readDataBits, CFG.baud / 2);
+                clearInterval(scannerInterval); // Stop scanning, start reading
+            }
+        }
+
+    }, 20); // Scan loop
+}
+
+function readDataBits() {
+    let bits = "";
+    let readInterval = setInterval(() => {
+        // Corrected frequencies based on handshake skew
+        const e0 = getEnergyAt(CFG.freq0 + freqOffset);
+        const e1 = getEnergyAt(CFG.freq1 + freqOffset);
+        
+        // Simple comparator
+        if(e1 > e0 && e1 > ambientNoise) {
+            bits += "1";
+        } else if(e0 > e1 && e0 > ambientNoise) {
+            bits += "0";
+        } else {
+            // Signal lost or done
+            clearInterval(readInterval);
+            finishReception(bits);
+        }
+
+        // Failsafe: Cap length
+        if(bits.length >= 8) {
+            clearInterval(readInterval);
+            finishReception(bits);
+        }
+    }, CFG.baud);
+}
+
+function finishReception(bits) {
+    log("RX", `Raw Bits: ${bits}`);
+    if(bits.length > 0) {
+        const peerHeight = parseInt(bits, 2);
+        log("RX", `Decoded Peer Height: ${peerHeight}`);
+        
+        if(peerHeight > chain.length) {
+            log("SYS", " PEER HAS LONGER CHAIN. SYNC REQUIRED.");
+            alert(`New Consensus Found!\nPeer Height: ${peerHeight}\nLocal Height: ${chain.length}\n(In full version, sync would start now)`);
+        } else {
+            log("SYS", "Local chain is up to date.");
+        }
     }
+    
+    // Reset
+    toggleListener(); // Stop listener
+    toggleListener(); // Restart listener (Auto-reset)
 }
 
-function processPacket(bits) {
-    if (bits.length < 2) return; // Noise
-    log("NET", `Packet Received: ${bits}`);
-    
-    // In our simplified protocol, 8 bits = Chain Height
-    // Pad or trim to 8 bits
-    const cleanBits = bits.substring(0, 8);
-    const peerHeight = parseInt(cleanBits, 2);
-    
-    if (isNaN(peerHeight)) return;
 
-    log("NET", `DECODED: Peer Height is ${peerHeight}.`);
+// --- DSP UTILS ---
+
+function getEnergyAt(freq) {
+    const nyquist = ctx.sampleRate / 2;
+    const index = Math.round(freq / (nyquist / analyser.frequencyBinCount));
     
-    if (peerHeight > chain.length) {
-        log("NET", "⚠ LONGER CHAIN DETECTED. REQUESTING SYNC...");
-        // In a real app, we would now request the missing blocks
-    } else {
-        log("NET", "Chain is up to date (or ahead).");
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    micAnalyser.getByteFrequencyData(data);
+    
+    // Sample 3 bins for stability
+    return (data[index] + data[index-1] + data[index+1]) / 3;
+}
+
+function findPeakInWindow(centerFreq, bandwidth) {
+    const nyquist = ctx.sampleRate / 2;
+    const binWidth = nyquist / analyser.frequencyBinCount;
+    
+    const startBin = Math.floor((centerFreq - bandwidth) / binWidth);
+    const endBin = Math.ceil((centerFreq + bandwidth) / binWidth);
+    
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    micAnalyser.getByteFrequencyData(data);
+    
+    let maxE = 0;
+    let maxBin = 0;
+    
+    for(let i=startBin; i<=endBin; i++) {
+        if(data[i] > maxE) {
+            maxE = data[i];
+            maxBin = i;
+        }
     }
+    
+    return {
+        energy: maxE,
+        freq: maxBin * binWidth
+    };
 }
 
 
-// --- 4. UTILS ---
-function textToFreqs(text) {
-    // Map chars to audible spectrum for effect
-    return text.split('').map(c => 400 + (c.charCodeAt(0) * 10));
-}
+// --- VISUALIZATION ---
+function drawVisualizer() {
+    const canvas = document.getElementById('scope');
+    const cCtx = canvas.getContext('2d');
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    
+    // We only care about high freq range for this app
+    // Bins 800 to 1024 roughly covers 15kHz-22kHz at 48k sample rate
+    const startBin = Math.floor(15000 / (ctx.sampleRate/2 / analyser.frequencyBinCount));
 
-function playPolyphonic(freqs, dur) {
-    freqs.forEach(f => {
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        osc.frequency.value = f;
-        g.gain.value = 0.1;
-        osc.connect(g);
-        g.connect(masterGain); // Local sound for feedback
-        // Note: For "Meme Mining" stealth, you would NOT connect to masterGain
-        osc.start();
-        osc.stop(ctx.currentTime + dur);
-    });
+    function loop() {
+        requestAnimationFrame(loop);
+        analyser.getByteFrequencyData(data);
+        
+        cCtx.fillStyle = '#000';
+        cCtx.fillRect(0,0,canvas.width, canvas.height);
+        
+        const slice = data.slice(startBin);
+        const barWidth = canvas.width / slice.length;
+        
+        for(let i=0; i<slice.length; i++) {
+            const h = (slice[i] / 255) * canvas.height;
+            const freq = (startBin + i) * (ctx.sampleRate/2 / analyser.frequencyBinCount);
+            
+            // Color code protocols
+            if(Math.abs(freq - CFG.freqPilot) < 200) cCtx.fillStyle = '#ff0'; // Pilot
+            else if(Math.abs(freq - CFG.freq0) < 200) cCtx.fillStyle = '#f00'; // 0
+            else if(Math.abs(freq - CFG.freq1) < 200) cCtx.fillStyle = '#0f0'; // 1
+            else cCtx.fillStyle = '#222';
+            
+            cCtx.fillRect(i*barWidth, canvas.height - h, barWidth, h);
+        }
+    }
+    loop();
 }
 
 function log(type, msg) {
     const div = document.getElementById('consoleLog');
-    const clss = type === "NET" ? "log-net" : type === "MINE" ? "log-tx" : "log-sys";
-    const time = new Date().toLocaleTimeString().split(' ')[0];
-    div.innerHTML = `<div class="log-entry ${clss}">[${time}][${type}] ${msg}</div>` + div.innerHTML;
+    const cls = type === 'TX' ? 'log-tx' : type === 'RX' ? 'log-rx' : type === 'ERR' ? 'log-err' : 'log-sys';
+    div.innerHTML += `<div class="${cls}">[${type}] ${msg}</div>`;
+    div.scrollTop = div.scrollHeight;
 }
-
-// --- VISUALIZER ---
-function startVisualizer() {
-    const canvas = document.getElementById('scope');
-    const cCtx = canvas.getContext('2d');
-    const data = new Uint8Array(analyser.frequencyBinCount);
-
-    function draw() {
-        requestAnimationFrame(draw);
-        analyser.getByteFrequencyData(data);
-        
-        cCtx.fillStyle = '#050505';
-        cCtx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        const barW = (canvas.width / data.length) * 2.5;
-        let x = 0;
-        
-        for(let i=0; i<data.length; i++) {
-            const h = data[i] / 2;
-            const hue = i % 360;
-            cCtx.fillStyle = `hsl(${120}, 100%, 50%)`;
-            cCtx.fillRect(x, canvas.height - h, barW, h);
-            x += barW + 1;
-        }
-    }
-    draw();
-}
-
 </script>
 </body>
 </html>
