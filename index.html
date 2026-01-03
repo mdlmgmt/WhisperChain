@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ChirpChain v0.2: Adaptive Sync</title>
+    <title>ChirpChain v0.3: Dispute Resolution</title>
     <style>
         :root { --p: #0f0; --s: #000; --d: #111; --h: #003300; --err: #f00; --warn: #ff0; }
         body { background: var(--s); color: var(--p); font-family: 'Courier New', monospace; padding: 15px; margin: 0; overflow-x: hidden; font-size: 14px; }
@@ -38,6 +38,15 @@
         .block-node { min-width: 50px; height: 50px; border: 1px solid #444; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.7rem; background: #080808; }
         .block-node.tip { border-color: var(--p); box-shadow: 0 0 5px var(--p); }
 
+        /* MODAL OVERLAY (DISPUTE) */
+        #disputeModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 999; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+        .modal-box { width: 90%; max-width: 400px; background: #000; border: 2px solid var(--warn); padding: 20px; box-shadow: 0 0 30px var(--warn); animation: shake 0.5s; }
+        .compare-row { display: flex; justify-content: space-between; margin: 15px 0; border-bottom: 1px solid #333; padding-bottom: 5px; }
+        .val-local { color: #888; }
+        .val-peer { color: var(--p); font-weight: bold; }
+        
+        @keyframes shake { 0% { transform: translate(1px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }
+        
         /* Pulse Animation for Broadcasting */
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); } }
         .transmitting { animation: pulse 1s infinite; border-color: #fff !important; }
@@ -47,7 +56,7 @@
 
     <header>
         <div>
-            <h1>ChirpChain <span style="font-size:0.6em; color:#888;">v0.2</span></h1>
+            <h1>ChirpChain <span style="font-size:0.6em; color:#888;">v0.3</span></h1>
         </div>
         <div id="statusIndicator" style="font-size:0.7rem; color:#555;"> NO AUDIO</div>
     </header>
@@ -107,16 +116,38 @@
         </div>
     </div>
 
+    <!-- DISPUTE MODAL -->
+    <div id="disputeModal">
+        <div class="modal-box">
+            <h2 style="color:var(--warn); border-color:var(--warn); text-align:center;"> FORK DETECTED</h2>
+            <p style="font-size:0.8rem; color:#aaa; text-align:center;">A peer has broadcast a valid chain with greater proof-of-work.</p>
+            
+            <div class="compare-row">
+                <span>Metric</span>
+                <span>My Node</span>
+                <span>Peer Node</span>
+            </div>
+            <div class="compare-row">
+                <span>Height</span>
+                <span class="val-local" id="dispLocalHeight">0</span>
+                <span class="val-peer" id="dispPeerHeight">0</span>
+            </div>
+            <div class="compare-row">
+                <span>Hash Tip</span>
+                <span class="val-local" id="dispLocalHash">...</span>
+                <span class="val-peer">UNKNOWN</span>
+            </div>
+            
+            <div style="margin-top:20px;">
+                <button onclick="resolveDispute(true)" style="border-color:var(--warn); color:var(--warn);"> ACCEPT SYNC (OVERWRITE)</button>
+                <button onclick="resolveDispute(false)" style="border-color:#555; color:#888;">IGNORE (STAY ON FORK)</button>
+            </div>
+        </div>
+    </div>
+
 <script>
 /**
- * CHIRPCHAIN v0.2 - ADAPTIVE ACOUSTIC CONSENSUS
- * 
- * PROTOCOL SPEC:
- * 1. PILOT: 17,000 Hz (Sent for 1.5s). Receiver scans for peak to lock freq.
- * 2. SYNC GAP: 200ms Silence.
- * 3. DATA: NRZ Encoded. 18kHz (0) / 19kHz (1).
- *    - Receiver applies frequency correction offset found during Pilot.
- *    - Baud Rate: 120ms (Slow but reliable).
+ * CHIRPCHAIN v0.3 - DISPUTE RESOLUTION
  */
 
 const CFG = {
@@ -126,7 +157,7 @@ const CFG = {
     baud: 120, // ms per bit
     pilotDuration: 1500, // ms
     fftSize: 2048,
-    thresholdRatio: 1.5 // Signal must be 1.5x louder than noise floor
+    thresholdRatio: 1.4 
 };
 
 // GLOBAL STATE
@@ -134,13 +165,13 @@ let ctx, analyser, mic, micAnalyser;
 let chain = [];
 let isListening = false;
 let scannerInterval;
-let rxState = 'IDLE'; // IDLE, SCANNING, LOCKED, RECEIVING
+let rxState = 'IDLE'; 
 let ambientNoise = 0;
-let freqOffset = 0; // Hardware correction
+let freqOffset = 0; 
+let pendingPeerHeight = 0;
 
 // --- 1. SYSTEM INITIALIZATION ---
 async function initAudio() {
-    // Security Check
     if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
         alert("SECURITY ERR: Browser requires HTTPS for Microphone access.");
         return;
@@ -148,35 +179,22 @@ async function initAudio() {
 
     try {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // Output path (Speakers)
         analyser = ctx.createAnalyser();
         analyser.fftSize = CFG.fftSize;
-        analyser.connect(ctx.destination); // Loopback to ears
+        analyser.connect(ctx.destination); 
 
-        // Input path (Mic)
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-            audio: { 
-                echoCancellation: false, 
-                noiseSuppression: false, // Vital for hearing tones
-                autoGainControl: false 
-            } 
-        });
-        
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
         mic = ctx.createMediaStreamSource(stream);
         micAnalyser = ctx.createAnalyser();
         micAnalyser.fftSize = CFG.fftSize;
         micAnalyser.smoothingTimeConstant = 0.2;
         mic.connect(micAnalyser);
 
-        // UI Swap
         document.getElementById('setupPanel').style.display = 'none';
         document.getElementById('mainInterface').style.display = 'block';
         document.getElementById('statusIndicator').innerHTML = `<span style="color:#0f0"> ONLINE</span>`;
         
-        log("SYS", "DSP Engine Started.");
-        log("SYS", `Sample Rate: ${ctx.sampleRate}Hz`);
-        
+        log("SYS", "Audio Consensus Engine Ready.");
         loadChain();
         drawVisualizer();
         calibrateNoiseFloor();
@@ -191,43 +209,31 @@ function loadChain() {
     const stored = localStorage.getItem('chirp_chain_v2');
     chain = stored ? JSON.parse(stored) : [];
     renderChain();
-    log("SYS", `Chain Loaded. Height: ${chain.length}`);
 }
 
 function mineBlock() {
     const data = document.getElementById('txData').value || "Empty Block";
-    
-    // Play "Mining" Sound (Spectral Hashing simulation)
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.setValueAtTime(400, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.1);
-    gain.gain.value = 0.1;
-    osc.connect(gain);
-    gain.connect(analyser); // Connect to main out
-    osc.start();
-    osc.stop(ctx.currentTime + 0.2);
+    playTone(400, 0.1, 'sine'); // Mining Sound
 
     const block = {
         index: chain.length,
         timestamp: Date.now(),
         data: data,
         prevHash: chain.length ? chain[chain.length-1].hash : "GENESIS",
-        hash: Math.random().toString(36).substring(2, 10)
+        hash: Math.random().toString(36).substring(2, 6).toUpperCase()
     };
 
     chain.push(block);
     localStorage.setItem('chirp_chain_v2', JSON.stringify(chain));
     renderChain();
     document.getElementById('txData').value = "";
-    log("MINE", `Block #${block.index} Mined.`);
+    log("MINE", `Block #${block.index} Mined [${block.hash}].`);
 }
 
 function renderChain() {
     document.getElementById('chainHeight').innerText = chain.length;
-    const el = document.getElementById('chainVis');
-    el.innerHTML = chain.map((b, i) => 
-        `<div class="block-node ${i===chain.length-1?'tip':''}" onclick="alert('${b.data}')">#${b.index}</div>`
+    document.getElementById('chainVis').innerHTML = chain.map((b, i) => 
+        `<div class="block-node ${i===chain.length-1?'tip':''}" title="${b.data}">#${b.index}<br><span style="font-size:0.5em">${b.hash}</span></div>`
     ).reverse().join('');
 }
 
@@ -238,36 +244,82 @@ function wipeChain() {
     log("SYS", "Storage Wiped.");
 }
 
-// --- 3. TRANSMISSION PROTOCOL (TX) ---
+// --- 3. DISPUTE RESOLUTION ---
+function showDisputeDialog(peerHeight) {
+    playTone(150, 0.4, 'sawtooth'); // Alarm Sound
+    playTone(100, 0.4, 'sawtooth');
+
+    const localHeight = chain.length;
+    const localHash = localHeight > 0 ? chain[chain.length-1].hash : "NONE";
+
+    document.getElementById('dispLocalHeight').innerText = localHeight;
+    document.getElementById('dispPeerHeight').innerText = peerHeight;
+    document.getElementById('dispLocalHash').innerText = localHash;
+
+    pendingPeerHeight = peerHeight;
+    document.getElementById('disputeModal').style.display = 'flex';
+    log("WARN", `Consensus Dispute: Local(${localHeight}) vs Peer(${peerHeight})`);
+}
+
+function resolveDispute(accepted) {
+    document.getElementById('disputeModal').style.display = 'none';
+    
+    if (accepted) {
+        log("SYS", "Fork Accepted. Initializing Sync...");
+        
+        // SIMULATE SYNC DOWNLOAD (Generating Ghost Blocks)
+        let ghostChain = [...chain];
+        const currentHeight = chain.length;
+        
+        // Generate missing blocks
+        for (let i = currentHeight; i < pendingPeerHeight; i++) {
+            ghostChain.push({
+                index: i,
+                timestamp: Date.now(),
+                data: "Synced from Peer (Ghost)",
+                prevHash: i > 0 ? ghostChain[i-1].hash : "GENESIS",
+                hash: "SYNC" + Math.random().toString(36).substring(2, 4).toUpperCase()
+            });
+        }
+        
+        chain = ghostChain;
+        localStorage.setItem('chirp_chain_v2', JSON.stringify(chain));
+        renderChain();
+        
+        playTone(880, 0.1, 'sine'); // Success Chime
+        playTone(1760, 0.2, 'sine');
+        log("SYS", `Sync Complete. Chain extended to Height ${chain.length}.`);
+
+    } else {
+        log("SYS", "Fork Rejected. Retained local chain.");
+    }
+    
+    // Resume listening after dispute handled
+    startScanning();
+}
+
+// --- 4. TRANSMISSION PROTOCOL (TX) ---
 function broadcastChain() {
     if(!ctx) return;
     const btn = document.getElementById('broadcastBtn');
     btn.classList.add('transmitting');
     btn.disabled = true;
 
-    // Payload: Only sending Chain Height (8 bits) for MVP
     const height = chain.length;
-    // Cap at 255 blocks for protocol simplicity
     const payload = Math.min(height, 255).toString(2).padStart(8, '0');
 
     log("TX", `Broadcasting Height: ${height} (Binary: ${payload})`);
     
     const t0 = ctx.currentTime;
-    
-    // 1. PILOT TONE (1.5s) - Allows receiver to lock frequency
-    playFreq(CFG.freqPilot, t0, CFG.pilotDuration / 1000);
-    
-    // 2. SYNC GAP (200ms) - Silence implies "Data Start"
-    const tData = t0 + (CFG.pilotDuration / 1000) + 0.2;
+    playFreq(CFG.freqPilot, t0, CFG.pilotDuration / 1000); // PILOT
+    const tData = t0 + (CFG.pilotDuration / 1000) + 0.2; // GAP
 
-    // 3. DATA STREAM
     for(let i=0; i<payload.length; i++) {
         const bit = payload[i];
         const freq = bit === '1' ? CFG.freq1 : CFG.freq0;
         playFreq(freq, tData + (i * CFG.baud/1000), CFG.baud/1000);
     }
 
-    // Cleanup UI
     setTimeout(() => {
         btn.classList.remove('transmitting');
         btn.disabled = false;
@@ -279,34 +331,38 @@ function playFreq(freq, startTime, duration) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.frequency.value = freq;
-    
-    // Envelope (Anti-pop)
     gain.gain.setValueAtTime(0, startTime);
     gain.gain.linearRampToValueAtTime(0.8, startTime + 0.05);
     gain.gain.linearRampToValueAtTime(0.8, startTime + duration - 0.05);
     gain.gain.linearRampToValueAtTime(0, startTime + duration);
-    
     osc.connect(gain);
-    gain.connect(analyser); // Play to speakers
+    gain.connect(analyser);
     osc.start(startTime);
     osc.stop(startTime + duration);
 }
 
+function playTone(freq, duration, type) {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.value = 0.1;
+    osc.connect(gain);
+    gain.connect(analyser);
+    osc.start();
+    osc.stop(ctx.currentTime + duration);
+}
 
-// --- 4. RECEIVER PROTOCOL (RX) ---
+// --- 5. RECEIVER PROTOCOL (RX) ---
 function calibrateNoiseFloor() {
-    // Sample for 1 second to find ambient noise in the ultrasonic range
-    let samples = 0;
-    let sum = 0;
+    let samples = 0; let sum = 0;
     const scanner = setInterval(() => {
-        const energy = getEnergyAt(CFG.freqPilot); // Check pilot band
-        sum += energy;
+        sum += getEnergyAt(CFG.freqPilot);
         samples++;
         if(samples > 20) {
             clearInterval(scanner);
-            ambientNoise = Math.max(10, sum / samples); // Min floor 10
+            ambientNoise = Math.max(10, sum / samples);
             document.getElementById('noiseFloor').innerText = Math.floor(ambientNoise);
-            log("SYS", `Calibrated Noise Floor: ${Math.floor(ambientNoise)}`);
         }
     }, 50);
 }
@@ -334,68 +390,47 @@ function startScanning() {
     let pilotStreak = 0;
     
     scannerInterval = setInterval(() => {
-        // --- STEP 1: PILOT DETECTION ---
         if(rxState === 'SCANNING') {
-            // Scan window around pilot (16.5k - 17.5k) for peak
             const peak = findPeakInWindow(CFG.freqPilot, 500);
-            
-            // UI Meter
             const meterPct = Math.min((peak.energy / (ambientNoise*3)) * 100, 100);
             document.getElementById('signalMeter').style.width = meterPct + "%";
 
             if(peak.energy > ambientNoise * CFG.thresholdRatio) {
                 pilotStreak++;
-                if(pilotStreak > 10) { // ~200ms of solid tone
+                if(pilotStreak > 8) { 
                     rxState = 'LOCKED';
-                    freqOffset = peak.freq - CFG.freqPilot; // CALCULATE HARDWARE SKEW
+                    freqOffset = peak.freq - CFG.freqPilot;
                     log("RX", `LOCKED! Skew: ${Math.floor(freqOffset)}Hz`);
-                    document.getElementById('rxStatus').innerText = "PILOT LOCKED - WAITING FOR SYNC";
+                    document.getElementById('rxStatus').innerText = "LOCKED - WAITING SYNC";
                     document.getElementById('rxStatus').style.color = "#ff0";
                 }
-            } else {
-                pilotStreak = 0;
-            }
+            } else { pilotStreak = 0; }
         }
-
-        // --- STEP 2: SYNC GAP DETECTION ---
         else if (rxState === 'LOCKED') {
             const currentPilotEnergy = getEnergyAt(CFG.freqPilot + freqOffset);
-            
-            // Wait for silence (Pilot ends)
             if(currentPilotEnergy < ambientNoise * 1.2) {
-                log("RX", "Sync Gap Detected. Reading Stream...");
                 rxState = 'RECEIVING';
                 document.getElementById('rxStatus').innerText = "RECEIVING DATA...";
                 document.getElementById('rxStatus').style.color = "#0f0";
-                
-                // Align timing: Wait half a baud to sample middle of bit
                 setTimeout(readDataBits, CFG.baud / 2);
-                clearInterval(scannerInterval); // Stop scanning, start reading
+                clearInterval(scannerInterval); 
             }
         }
-
-    }, 20); // Scan loop
+    }, 20);
 }
 
 function readDataBits() {
     let bits = "";
     let readInterval = setInterval(() => {
-        // Corrected frequencies based on handshake skew
         const e0 = getEnergyAt(CFG.freq0 + freqOffset);
         const e1 = getEnergyAt(CFG.freq1 + freqOffset);
         
-        // Simple comparator
-        if(e1 > e0 && e1 > ambientNoise) {
-            bits += "1";
-        } else if(e0 > e1 && e0 > ambientNoise) {
-            bits += "0";
-        } else {
-            // Signal lost or done
+        if(e1 > e0 && e1 > ambientNoise) bits += "1";
+        else if(e0 > e1 && e0 > ambientNoise) bits += "0";
+        else {
             clearInterval(readInterval);
             finishReception(bits);
         }
-
-        // Failsafe: Cap length
         if(bits.length >= 8) {
             clearInterval(readInterval);
             finishReception(bits);
@@ -404,95 +439,71 @@ function readDataBits() {
 }
 
 function finishReception(bits) {
-    log("RX", `Raw Bits: ${bits}`);
     if(bits.length > 0) {
         const peerHeight = parseInt(bits, 2);
         log("RX", `Decoded Peer Height: ${peerHeight}`);
         
         if(peerHeight > chain.length) {
-            log("SYS", " PEER HAS LONGER CHAIN. SYNC REQUIRED.");
-            alert(`New Consensus Found!\nPeer Height: ${peerHeight}\nLocal Height: ${chain.length}\n(In full version, sync would start now)`);
+            // STOP LISTENING AND SHOW DIALOG
+            clearInterval(scannerInterval);
+            isListening = false;
+            document.getElementById('listenBtn').innerText = "BUSY (DISPUTE)";
+            showDisputeDialog(peerHeight);
         } else {
             log("SYS", "Local chain is up to date.");
+            toggleListener(); // Reset
+            toggleListener();
         }
+    } else {
+        toggleListener(); // Reset on noise
+        toggleListener();
     }
-    
-    // Reset
-    toggleListener(); // Stop listener
-    toggleListener(); // Restart listener (Auto-reset)
 }
 
-
 // --- DSP UTILS ---
-
 function getEnergyAt(freq) {
     const nyquist = ctx.sampleRate / 2;
     const index = Math.round(freq / (nyquist / analyser.frequencyBinCount));
-    
     const data = new Uint8Array(analyser.frequencyBinCount);
     micAnalyser.getByteFrequencyData(data);
-    
-    // Sample 3 bins for stability
     return (data[index] + data[index-1] + data[index+1]) / 3;
 }
 
 function findPeakInWindow(centerFreq, bandwidth) {
     const nyquist = ctx.sampleRate / 2;
     const binWidth = nyquist / analyser.frequencyBinCount;
-    
     const startBin = Math.floor((centerFreq - bandwidth) / binWidth);
     const endBin = Math.ceil((centerFreq + bandwidth) / binWidth);
-    
     const data = new Uint8Array(analyser.frequencyBinCount);
     micAnalyser.getByteFrequencyData(data);
-    
-    let maxE = 0;
-    let maxBin = 0;
-    
+    let maxE = 0; let maxBin = 0;
     for(let i=startBin; i<=endBin; i++) {
-        if(data[i] > maxE) {
-            maxE = data[i];
-            maxBin = i;
-        }
+        if(data[i] > maxE) { maxE = data[i]; maxBin = i; }
     }
-    
-    return {
-        energy: maxE,
-        freq: maxBin * binWidth
-    };
+    return { energy: maxE, freq: maxBin * binWidth };
 }
-
 
 // --- VISUALIZATION ---
 function drawVisualizer() {
     const canvas = document.getElementById('scope');
     const cCtx = canvas.getContext('2d');
     const data = new Uint8Array(analyser.frequencyBinCount);
-    
-    // We only care about high freq range for this app
-    // Bins 800 to 1024 roughly covers 15kHz-22kHz at 48k sample rate
     const startBin = Math.floor(15000 / (ctx.sampleRate/2 / analyser.frequencyBinCount));
 
     function loop() {
         requestAnimationFrame(loop);
         analyser.getByteFrequencyData(data);
-        
         cCtx.fillStyle = '#000';
         cCtx.fillRect(0,0,canvas.width, canvas.height);
-        
         const slice = data.slice(startBin);
         const barWidth = canvas.width / slice.length;
-        
         for(let i=0; i<slice.length; i++) {
             const h = (slice[i] / 255) * canvas.height;
             const freq = (startBin + i) * (ctx.sampleRate/2 / analyser.frequencyBinCount);
-            
-            // Color code protocols
-            if(Math.abs(freq - CFG.freqPilot) < 200) cCtx.fillStyle = '#ff0'; // Pilot
-            else if(Math.abs(freq - CFG.freq0) < 200) cCtx.fillStyle = '#f00'; // 0
-            else if(Math.abs(freq - CFG.freq1) < 200) cCtx.fillStyle = '#0f0'; // 1
+            if(Math.abs(freq - CFG.freqPilot) < 200) cCtx.fillStyle = '#ff0';
+            else if(Math.abs(freq - CFG.freq0) < 200) cCtx.fillStyle = '#f00';
+            else if(Math.abs(freq - CFG.freq1) < 200) cCtx.fillStyle = '#0f0';
             else cCtx.fillStyle = '#222';
-            
             cCtx.fillRect(i*barWidth, canvas.height - h, barWidth, h);
         }
     }
