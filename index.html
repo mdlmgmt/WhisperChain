@@ -3,104 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ChirpChain: Secret Note</title>
+    <title>WhisperChain</title>
     <style>
         :root { 
-            --bg: #050505; --card: #151515; 
-            --neon-blue: #00f3ff; --neon-pink: #ff00ff; --neon-green: #00ff66;
-            --text: #eee; --err: #ff3333;
+            --bg: #ffffff; 
+            --text: #000000; 
+            --border: #e0e0e0; 
+            --accent: #333333;
         }
         body { 
             background: var(--bg); color: var(--text); 
-            font-family: 'Verdana', sans-serif; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             margin: 0; padding: 0; 
-            overflow: hidden; height: 100vh; display: flex; flex-direction: column;
+            height: 100vh; display: flex; flex-direction: column;
         }
 
         /* HEADER */
         header {
-            padding: 15px;
-            background: rgba(20,20,20,0.95);
-            border-bottom: 2px solid var(--neon-pink);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
             display: flex; justify-content: space-between; align-items: center;
-            z-index: 100;
         }
-        .brand { font-family: 'Courier New', monospace; font-weight: 900; font-size: 1.2rem; letter-spacing: -1px; }
-        .brand span { color: var(--neon-blue); }
-        .panic-btn { font-size: 1.5rem; cursor: pointer; transition: 0.2s; }
-        .panic-btn:hover { transform: scale(1.1); }
+        .brand { font-weight: 700; font-size: 1rem; letter-spacing: -0.5px; }
+        .panic-btn { cursor: pointer; font-size: 1.2rem; color: #999; }
+        .panic-btn:hover { color: #000; }
+
+        /* INPUT AREA (TOP) */
+        #composer {
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex; gap: 10px; align-items: center;
+        }
+        input {
+            flex: 1; border: none; background: #f5f5f5; color: #000;
+            padding: 12px 15px; border-radius: 6px; outline: none;
+            font-family: monospace; text-transform: uppercase; font-size: 1rem;
+        }
+        input::placeholder { color: #ccc; }
+        input:focus { background: #eee; }
+        
+        .send-btn {
+            background: #000; color: #fff; border: none; border-radius: 6px;
+            padding: 12px 20px; font-weight: 600; cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .send-btn:disabled { background: #ccc; cursor: default; }
 
         /* FEED */
         #feed {
-            flex: 1; overflow-y: auto; padding: 15px;
-            display: flex; flex-direction: column; gap: 10px;
-            scroll-behavior: smooth;
-            padding-bottom: 80px; /* Space for composer */
+            flex: 1; overflow-y: auto; padding: 20px;
+            display: flex; flex-direction: column; gap: 8px;
         }
         
-        .bubble {
-            background: var(--card); padding: 10px 14px; border-radius: 12px;
-            border-left: 3px solid var(--neon-blue);
-            animation: slideUp 0.3s ease; max-width: 85%;
+        .msg-row {
+            padding: 8px 0;
+            border-bottom: 1px solid #f9f9f9;
+            display: flex; gap: 10px; align-items: baseline;
+            animation: fadeIn 0.2s ease;
         }
-        .bubble.mine { align-self: flex-end; border-left: none; border-right: 3px solid var(--neon-pink); background: #222; }
-        .bubble.sys { align-self: center; border: 1px solid #333; font-size: 0.8rem; color: #888; text-align: center; }
+        .msg-time { font-size: 0.7rem; color: #999; font-family: monospace; min-width: 40px; }
+        .msg-text { font-size: 0.95rem; font-weight: 500; letter-spacing: 0.5px; }
+        .msg-row.sys { justify-content: center; color: #999; font-size: 0.8rem; font-style: italic; border:none;}
+
+        /* STATUS & VIZ */
+        #status {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: #000; color: #fff; padding: 6px 16px; border-radius: 20px;
+            font-size: 0.75rem; opacity: 0; transition: 0.2s; pointer-events: none;
+            display: flex; gap: 8px; align-items: center;
+        }
+        #status.active { opacity: 1; bottom: 30px; }
         
-        .meta { font-size: 0.7rem; color: #666; display: flex; justify-content: space-between; margin-bottom: 4px; }
-        .msg { font-size: 1.1rem; letter-spacing: 1px; font-weight: bold; font-family: 'Courier New', monospace; }
+        #viz { position: fixed; top: 0; left: 0; width: 100%; height: 2px; z-index: 99; pointer-events: none; }
 
-        /* INPUT AREA */
-        #composer {
-            background: #000; padding: 15px; border-top: 1px solid #333;
-            display: flex; gap: 10px; align-items: center;
+        /* INIT BUTTON */
+        #initOverlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #fff; display: flex; align-items: center; justify-content: center;
+            z-index: 50;
         }
-        .input-wrap { flex: 1; position: relative; }
-        input {
-            width: 100%; background: #222; border: 1px solid #444; color: #fff;
-            padding: 12px; border-radius: 20px; outline: none;
-            font-size: 1rem; font-family: 'Courier New', monospace; text-transform: uppercase;
+        .activate-btn {
+            background: #fff; border: 1px solid #000; padding: 15px 30px;
+            font-weight: 600; cursor: pointer; transition: 0.2s;
         }
-        input:focus { border-color: var(--neon-green); }
-        .char-count {
-            position: absolute; right: 15px; top: 50%; transform: translateY(-50%);
-            font-size: 0.7rem; color: #666;
-        }
-        .send-btn {
-            background: var(--neon-blue); color: #000; border: none; border-radius: 50%;
-            width: 45px; height: 45px; font-weight: 900; cursor: pointer;
-            box-shadow: 0 0 15px var(--neon-blue);
-        }
-        .send-btn:disabled { background: #333; color: #555; box-shadow: none; }
+        .activate-btn:hover { background: #000; color: #fff; }
 
-        /* STATUS OVERLAY */
-        #statusPill {
-            position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.9); border: 1px solid var(--neon-green);
-            padding: 8px 20px; border-radius: 20px; font-size: 0.8rem;
-            color: var(--neon-green); opacity: 0; transition: 0.3s; pointer-events: none;
-            display: flex; flex-direction: column; align-items: center;
-            font-family: monospace;
-        }
-        #statusPill.active { opacity: 1; top: 80px; }
-        .rx-buffer { font-size: 1.2rem; letter-spacing: 3px; margin-top: 5px; color: #fff; }
-
-        /* VIZ */
-        #viz { position: absolute; top: 0; left: 0; width: 100%; height: 4px; pointer-events: none; z-index: 101; }
-
-        /* CALCULATOR DISGUISE */
+        /* CALCULATOR DISGUISE (Light Theme) */
         #calcDisguise {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: #fff; color: #000; z-index: 9999;
             display: none; flex-direction: column; font-family: sans-serif;
         }
-        .calc-screen { background: #222; color: #fff; height: 120px; width: 100%; font-size: 4rem; text-align: right; padding: 20px; box-sizing: border-box; }
+        .calc-screen { background: #f0f0f0; color: #000; height: 150px; width: 100%; font-size: 4rem; text-align: right; padding: 30px; box-sizing: border-box; font-weight: 300; }
         .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); height: 100%; }
-        .calc-btn { border: 1px solid #ddd; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; background: #eee; cursor: pointer;}
-        .calc-btn.orange { background: #ff9500; color: #fff; }
+        .calc-btn { border: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; background: #fff; cursor: pointer; color: #333; }
+        .calc-btn.orange { background: #ff9f0a; color: #fff; border:none; }
+        .calc-btn.grey { background: #e5e5e5; }
 
-        @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .pulse { animation: p 1s infinite; }
-        @keyframes p { 0% { box-shadow: 0 0 0 0 rgba(0,255,100,0.4); } 100% { box-shadow: 0 0 0 10px rgba(0,0,0,0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -109,7 +109,7 @@
     <div id="calcDisguise">
         <div class="calc-screen">0</div>
         <div class="calc-grid">
-            <div class="calc-btn">AC</div><div class="calc-btn">+/-</div><div class="calc-btn">%</div><div class="calc-btn orange">÷</div>
+            <div class="calc-btn grey">AC</div><div class="calc-btn grey">+/-</div><div class="calc-btn grey">%</div><div class="calc-btn orange">÷</div>
             <div class="calc-btn">7</div><div class="calc-btn">8</div><div class="calc-btn">9</div><div class="calc-btn orange">×</div>
             <div class="calc-btn">4</div><div class="calc-btn">5</div><div class="calc-btn">6</div><div class="calc-btn orange">-</div>
             <div class="calc-btn">1</div><div class="calc-btn">2</div><div class="calc-btn">3</div><div class="calc-btn orange">+</div>
@@ -120,249 +120,170 @@
     <canvas id="viz"></canvas>
 
     <header>
-        <div class="brand">Chirp<span>Chain</span> <span style="font-size:0.5em; color:#666">v0.7</span></div>
-        <div style="font-size:0.7rem; color:#888;" id="identity">...</div>
-        <div class="panic-btn" onclick="togglePanic()">🧮</div>
+        <div class="brand">WhisperChain</div>
+        <div class="panic-btn" onclick="togglePanic()">÷</div>
     </header>
 
-    <div id="statusPill">
-        <span id="statusText">RECEIVING...</span>
-        <div id="rxBuffer" class="rx-buffer"></div>
+    <div id="composer">
+        <input type="text" id="msgInput" maxlength="10" placeholder="10 CHAR LIMIT..." autocomplete="off">
+        <button class="send-btn" id="sendBtn" onclick="transmit()">Send</button>
     </div>
 
     <div id="feed">
-        <div style="text-align:center; color:#444; margin-top:50px; font-size:0.8rem;">
-            <p><strong>SECRET NOTE PROTOCOL</strong></p>
-            <p>Limit: 10 Characters</p>
-            <p>Encoding: 6-bit + Checksum</p>
-            <button onclick="startAudio()" style="margin-top:20px; padding:12px 24px; background:var(--neon-blue); color:#000; border:none; border-radius:20px; font-weight:bold;">ACTIVATE AUDIO</button>
-        </div>
+        <!-- Messages appear here -->
     </div>
 
-    <div id="composer">
-        <div class="input-wrap">
-            <input type="text" id="msgInput" maxlength="10" placeholder="10 CHAR LIMIT" autocomplete="off" oninput="updateCount()">
-            <div class="char-count" id="charCount">0/10</div>
-        </div>
-        <button class="send-btn" id="sendBtn" onclick="transmitMessage()">➤</button>
+    <div id="status">
+        <span id="statusTxt">Receiving...</span>
+        <span id="statusBuffer" style="font-family:monospace; color:#ccc"></span>
+    </div>
+
+    <div id="initOverlay">
+        <button class="activate-btn" onclick="startSystem()">Connect Audio</button>
     </div>
 
 <script>
 /**
- * CHIRPCHAIN v0.7 - "PASS THE NOTE" PROTOCOL
- * 
- * ENCODING (6-bit):
- * A-Z (0-25), 0-9 (26-35), Space (36), . (37), ! (38), ? (39)
- * 
- * PACKET STRUCTURE:
- * [PILOT 400ms] [GAP 50ms] [LEN 4bit] [DATA N*6bit] [CHECKSUM 4bit]
+ * WHISPERCHAIN
+ * 6-bit Binary Protocol over Air-Gapped Audio
  */
 
 const CFG = {
     pilot: 18500, bit0: 19000, bit1: 19500,
-    baud: 60, // 60ms per bit = ~16 bits/sec
-    fft: 2048
+    baud: 60, fft: 2048
 };
 
-const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?"; // 40 chars maps to 6 bits (max 63)
+const CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .!?"; 
 
-// STATE
 let ctx, analyser, mic, micAnalyser;
-let myName = "", rxState = "IDLE", scannerInterval;
-let ambientNoise = 0;
+let rxState = "IDLE", scannerInterval, ambientNoise = 0;
 
-const ADJS = ["Silent","Neon","Hidden","Dark","Late","Fast"];
-const NOUNS = ["Note","Whisper","Signal","Echo","Glitch","Vibe"];
-
-// --- 1. SETUP ---
-function genName() { return ADJS[Math.floor(Math.random()*ADJS.length)] + "_" + NOUNS[Math.floor(Math.random()*NOUNS.length)]; }
-function togglePanic() { const d=document.getElementById('calcDisguise'); d.style.display = d.style.display==='flex'?'none':'flex'; }
-function updateCount() { 
-    const len = document.getElementById('msgInput').value.length;
-    document.getElementById('charCount').innerText = `${len}/10`;
+function togglePanic() { 
+    const d = document.getElementById('calcDisguise'); 
+    d.style.display = d.style.display==='flex'?'none':'flex'; 
+    document.title = d.style.display==='flex'?'Calculator':'WhisperChain';
 }
 
-async function startAudio() {
+async function startSystem() {
     try {
         ctx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = ctx.createAnalyser(); analyser.fftSize = CFG.fft; analyser.connect(ctx.destination);
         const s = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false}});
         mic = ctx.createMediaStreamSource(s); micAnalyser = ctx.createAnalyser(); micAnalyser.fftSize = CFG.fft; micAnalyser.smoothingTimeConstant=0.1; mic.connect(micAnalyser);
         
-        myName = genName();
-        document.getElementById('identity').innerText = myName;
-        document.getElementById('feed').innerHTML = '<div class="bubble sys">Audio Channel Open. Listening...</div>';
-        
+        document.getElementById('initOverlay').style.display = 'none';
+        addMsg("System", "Channel Open.");
         startScanner(); drawViz();
-    } catch(e) { alert("Audio Error: " + e); }
+    } catch(e) { alert("Microphone access required."); }
 }
 
-// --- 2. ENCODING LOGIC ---
-function encodeText(text) {
-    let bits = "";
-    let sum = 0;
-    text = text.toUpperCase();
-    
-    // 1. Length Header (4 bits)
-    bits += text.length.toString(2).padStart(4, '0');
-
-    // 2. Data (6 bits per char)
+// --- ENCODING ---
+function encode(text) {
+    let bits = "", sum = 0; text = text.toUpperCase();
+    bits += text.length.toString(2).padStart(4, '0'); // Header
     for(let i=0; i<text.length; i++) {
-        const char = text[i];
-        let idx = CHARSET.indexOf(char);
-        if(idx === -1) idx = 36; // Default to space if unknown
-        sum += idx;
-        bits += idx.toString(2).padStart(6, '0');
+        let idx = CHARSET.indexOf(text[i]); if(idx === -1) idx = 36;
+        sum += idx; bits += idx.toString(2).padStart(6, '0');
     }
-
-    // 3. Checksum (4 bits) - Simple Sum Modulo 16
-    const checksum = sum % 16;
-    bits += checksum.toString(2).padStart(4, '0');
-
+    bits += (sum % 16).toString(2).padStart(4, '0'); // Checksum
     return bits;
 }
 
-function decodeBits(bits) {
+function decode(bits) {
     if(bits.length < 4) return null;
-    
-    // 1. Header
     const len = parseInt(bits.substr(0,4), 2);
-    const expectedLen = 4 + (len * 6) + 4;
-    
-    if(bits.length < expectedLen) return null; // Wait for more data
+    if(bits.length < 4 + (len*6) + 4) return null;
 
-    // 2. Payload
-    let msg = "";
-    let sum = 0;
-    let ptr = 4;
+    let msg = "", sum = 0, ptr = 4;
     for(let i=0; i<len; i++) {
-        const chunk = bits.substr(ptr, 6);
-        const idx = parseInt(chunk, 2);
-        msg += CHARSET[idx] || "?";
-        sum += idx;
-        ptr += 6;
+        const idx = parseInt(bits.substr(ptr, 6), 2);
+        msg += CHARSET[idx] || "?"; sum += idx; ptr += 6;
     }
-
-    // 3. Checksum Verify
-    const rxChecksum = parseInt(bits.substr(ptr, 4), 2);
-    const calcChecksum = sum % 16;
-
-    if(rxChecksum !== calcChecksum) return { error: "CHECKSUM FAIL" };
+    const cSum = parseInt(bits.substr(ptr, 4), 2);
+    if(cSum !== sum % 16) return { err: true };
     return { text: msg };
 }
 
-// --- 3. TRANSMISSION ---
-function transmitMessage() {
+// --- TX ---
+function transmit() {
     if(!ctx) return;
-    const input = document.getElementById('msgInput');
-    const text = input.value.toUpperCase().substr(0,10);
-    if(!text) return;
+    const inp = document.getElementById('msgInput');
+    const txt = inp.value.toUpperCase().substr(0,10);
+    if(!txt) return;
 
-    input.value = ""; updateCount();
-    addBubble(myName, text, "mine");
+    inp.value = "";
+    addMsg("Me", txt);
     
-    const bitstream = encodeText(text);
+    const bits = encode(txt);
     const btn = document.getElementById('sendBtn');
-    btn.disabled = true;
-    
-    // Play Audio
+    btn.disabled = true; btn.innerText = "...";
+
     const t = ctx.currentTime;
-    playTone(CFG.pilot, t, 0.4); // Pilot
+    playTone(CFG.pilot, t, 0.4);
     let tStart = t + 0.45;
 
-    for(let i=0; i<bitstream.length; i++) {
-        const freq = bitstream[i] === '1' ? CFG.bit1 : CFG.bit0;
-        playTone(freq, tStart, CFG.baud/1000);
+    for(let i=0; i<bits.length; i++) {
+        playTone(bits[i]==='1'?CFG.bit1:CFG.bit0, tStart, CFG.baud/1000);
         tStart += (CFG.baud/1000);
     }
 
-    setTimeout(() => { btn.disabled = false; }, (tStart - t)*1000);
+    setTimeout(() => { btn.disabled = false; btn.innerText = "Send"; }, (tStart - t)*1000);
 }
 
-// --- 4. RECEPTION (STATE MACHINE) ---
+// --- RX ---
 function startScanner() {
-    let noiseArr = [];
-    // Calibrate
-    const cal = setInterval(()=>{ noiseArr.push(getEnergy(CFG.pilot)); if(noiseArr.length>20){ clearInterval(cal); ambientNoise=Math.max(5, (noiseArr.reduce((a,b)=>a+b)/20)*1.3); } }, 50);
+    let nArr = [];
+    const cal = setInterval(()=>{ nArr.push(getE(CFG.pilot)); if(nArr.length>20){ clearInterval(cal); ambientNoise=Math.max(5, (nArr.reduce((a,b)=>a+b)/20)*1.3); } }, 50);
 
     scannerInterval = setInterval(() => {
         if(rxState === 'IDLE') {
-            if(getEnergy(CFG.pilot) > ambientNoise * 1.5) {
-                rxState = 'SYNC';
-                setStatus("INCOMING...", "", true);
-            }
+            if(getE(CFG.pilot) > ambientNoise * 1.5) { rxState = 'SYNC'; setStatus("Signal detected...", true); }
         } else if (rxState === 'SYNC') {
-            // Wait for pilot to drop
-            if(getEnergy(CFG.pilot) < ambientNoise * 1.2) {
-                rxState = 'READING';
-                setTimeout(readBits, CFG.baud/2); // Align center
-            }
+            if(getE(CFG.pilot) < ambientNoise * 1.2) { rxState = 'READING'; setTimeout(readBits, CFG.baud/2); }
         }
     }, 20);
 }
 
 function readBits() {
-    let rawBits = "";
-    let bitTimer = setInterval(() => {
-        const e0 = getEnergy(CFG.bit0);
-        const e1 = getEnergy(CFG.bit1);
+    let bits = "";
+    let tmr = setInterval(() => {
+        const e0 = getE(CFG.bit0), e1 = getE(CFG.bit1);
+        if(e1>e0 && e1>ambientNoise) bits+="1"; 
+        else if(e0>e1 && e0>ambientNoise) bits+="0"; 
+        else { clearInterval(tmr); finish(bits); return; }
         
-        // Simple Voting
-        if(e1 > e0 && e1 > ambientNoise) rawBits += "1";
-        else if(e0 > e1 && e0 > ambientNoise) rawBits += "0";
-        else {
-            // Silence detected - End of packet
-            clearInterval(bitTimer);
-            finalizePacket(rawBits);
-            return;
+        // Live Decode Preview
+        if(bits.length > 4 && (bits.length-4)%6===0) {
+           const p = decode(bits+"0000");
+           if(p && p.text) document.getElementById('statusBuffer').innerText = p.text;
         }
-
-        // Live Decoding UI
-        if(rawBits.length > 4 && (rawBits.length-4)%6 === 0) {
-            // Attempt partial decode for cool UI effect
-            const partial = decodeBits(rawBits + "0000"); // Padding
-            if(partial && partial.text) setStatus("DECODING", partial.text, true);
-        }
-
-        // Failsafe timeout
-        if(rawBits.length > 80) { clearInterval(bitTimer); rxState="IDLE"; setStatus("",""); }
-
+        if(bits.length > 80) { clearInterval(tmr); rxState="IDLE"; setStatus("", false); }
     }, CFG.baud);
 }
 
-function finalizePacket(bits) {
+function finish(bits) {
     rxState = "IDLE";
-    setStatus("FINISHING...", "");
-    
-    setTimeout(() => {
-        const res = decodeBits(bits);
-        if(res && res.text) {
-            addBubble("Peer", res.text);
-            setStatus("RECEIVED", "", false);
-        } else if (res && res.error) {
-            setStatus("CORRUPTED DATA", "", false);
-            setTimeout(()=>setStatus("","",false), 1000);
-        } else {
-            setStatus("","",false);
-        }
-    }, 200);
+    setStatus("", false);
+    const res = decode(bits);
+    if(res && res.text) addMsg("Peer", res.text);
 }
-
 
 // --- UTILS ---
-function addBubble(auth, txt, type="") {
+function addMsg( user, text) {
     const d = document.createElement('div');
-    d.className = `bubble ${type}`;
-    d.innerHTML = `<div class="meta"><span>${auth}</span><span>${new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</span></div><div class="msg">${txt}</div>`;
+    d.className = user==="System" ? "msg-row sys" : "msg-row";
+    const time = new Date().toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit'});
+    if(user==="System") d.innerHTML = text;
+    else d.innerHTML = `<div class="msg-time">${time}</div><div class="msg-text">${text}</div>`;
     const f = document.getElementById('feed');
-    f.appendChild(d); f.scrollTop = f.scrollHeight;
+    f.prepend(d);
 }
 
-function setStatus(txt, buffer, active) {
-    const p = document.getElementById('statusPill');
-    document.getElementById('statusText').innerText = txt;
-    document.getElementById('rxBuffer').innerText = buffer;
-    if(active) p.classList.add('active'); else p.classList.remove('active');
+function setStatus(txt, active) {
+    const s = document.getElementById('status');
+    document.getElementById('statusTxt').innerText = txt;
+    if(!active) document.getElementById('statusBuffer').innerText = "";
+    if(active) s.classList.add('active'); else s.classList.remove('active');
 }
 
 function playTone(f, t, d) {
@@ -371,7 +292,7 @@ function playTone(f, t, d) {
     o.connect(g); g.connect(ctx.destination); o.start(t); o.stop(t+d);
 }
 
-function getEnergy(f) {
+function getE(f) {
     const n = ctx.sampleRate/2;
     const b = Math.round(f / (n/micAnalyser.frequencyBinCount));
     const d = new Uint8Array(micAnalyser.frequencyBinCount);
@@ -384,7 +305,7 @@ function drawViz() {
     const d=new Uint8Array(micAnalyser.frequencyBinCount);
     function l() { requestAnimationFrame(l); micAnalyser.getByteFrequencyData(d); cc.clearRect(0,0,c.width,c.height);
         const s=Math.floor(18000/(ctx.sampleRate/2/CFG.fft)), sl=d.slice(s), w=c.width/sl.length;
-        cc.fillStyle='#ff00ff'; for(let i=0;i<sl.length;i++) if(sl[i]>10) cc.fillRect(i*w,0,w,4);
+        cc.fillStyle='#000'; for(let i=0;i<sl.length;i++) if(sl[i]>10) cc.fillRect(i*w,0,w,2);
     } l();
 }
 </script>
